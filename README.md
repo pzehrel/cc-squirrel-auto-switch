@@ -86,10 +86,10 @@ When leaving INSERT mode, the script queries `--getascii` to remember your curre
 ```bash
 # 1. Update version
 jq '.version = "0.2.0"' .claude-plugin/plugin.json > tmp && mv tmp .claude-plugin/plugin.json
-jq '.metadata.version = "0.2.0"' marketplace.json > tmp && mv tmp marketplace.json
+jq '.metadata.version = "0.2.0"' .claude-plugin/marketplace.json > tmp && mv tmp .claude-plugin/marketplace.json
 
 # 2. Commit, tag, push
-git add .claude-plugin/plugin.json marketplace.json
+git add .claude-plugin/plugin.json .claude-plugin/marketplace.json
 git commit -m "bump v0.2.0"
 git tag v0.2.0
 git push origin main --tags
