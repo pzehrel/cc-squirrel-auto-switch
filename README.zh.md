@@ -1,5 +1,7 @@
 # cc-squirrel-auto-switch
 
+[English](./README.md)
+
 Claude Code 插件：根据 vim 模式自动切换 Squirrel（鼠须管 / Rime）输入法。
 
 - **NORMAL / VISUAL** → ABC 英文 — 确保 `h` `j` `k` `l` 和快捷键不被中文输入法拦截

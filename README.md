@@ -1,5 +1,7 @@
 # cc-squirrel-auto-switch
 
+[中文](./README.zh.md)
+
 Claude Code plugin: auto-switch Squirrel (鼠须管 / Rime) input method based on vim mode.
 
 - **NORMAL / VISUAL** → ABC (English) — so `h` `j` `k` `l` and shortcuts work
