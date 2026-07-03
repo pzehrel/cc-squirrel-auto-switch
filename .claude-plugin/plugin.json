@@ -1,0 +1,14 @@
+{
+  "name": "cc-squirrel-auto-switch",
+  "description": "Auto-switch Squirrel (Rime) input method based on vim mode — ABC in NORMAL, Chinese in INSERT",
+  "version": "0.1.0",
+  "author": {
+    "name": "pzehrel"
+  },
+  "repository": "https://github.com/pzehrel/cc-squirrel-auto-switch",
+  "license": "MIT",
+  "keywords": ["squirrel", "rime", "input-method", "vim", "chinese", "ime"],
+  "commands": [
+    "./commands/setup.md"
+  ]
+}

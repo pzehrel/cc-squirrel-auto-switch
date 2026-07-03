@@ -1,0 +1,19 @@
+{
+  "name": "cc-squirrel-auto-switch",
+  "owner": {
+    "name": "pzehrel"
+  },
+  "metadata": {
+    "description": "Auto-switch Squirrel (Rime) input method based on Claude Code vim mode — ABC in NORMAL, Chinese in INSERT",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "cc-squirrel-auto-switch",
+      "source": "./",
+      "description": "Auto-switch Squirrel (Rime) input method based on vim mode. Keeps English in NORMAL so hjkl and shortcuts work, restores your last Chinese/English preference in INSERT.",
+      "category": "productivity",
+      "tags": ["squirrel", "rime", "input-method", "vim", "chinese", "ime"]
+    }
+  ]
+}
