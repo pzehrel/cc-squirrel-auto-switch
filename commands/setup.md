@@ -3,189 +3,101 @@ description: Configure cc-squirrel-auto-switch statusline
 allowed-tools: Bash, Read, Write, Edit, AskUserQuestion
 ---
 
-Configure cc-squirrel-auto-switch to auto-switch Squirrel input method based on vim mode.
+Run each step in order. Execute the bash commands directly — do not just display them.
 
-## Step 1: Verify prerequisites
-
-Check that Squirrel CLI and jq are available:
+## 1. Verify prerequisites
 
 ```bash
-# Check jq
-command -v jq || echo "MISSING: jq"
-
-# Check Squirrel
-SQUIRREL="/Library/Input Methods/Squirrel.app/Contents/MacOS/Squirrel"
-if [ -x "$SQUIRREL" ]; then
-  echo "OK: Squirrel CLI"
-else
-  echo "MISSING: Squirrel CLI at $SQUIRREL"
-fi
+command -v jq || { echo "MISSING: jq — install: brew install jq"; exit 1; }
+[ -x "/Library/Input Methods/Squirrel.app/Contents/MacOS/Squirrel" ] || { echo "MISSING: Squirrel"; exit 1; }
+echo "OK"
 ```
 
-If anything is MISSING, tell the user to install it and stop.
+If any check fails, tell the user and stop.
 
-## Step 2: Find the plugin
-
-Locate the latest installed version in the CC plugin cache:
+## 2. Generate the launcher
 
 ```bash
-CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-PLUGIN_DIR=$(ls -d "$CLAUDE_DIR"/plugins/cache/*/cc-squirrel-auto-switch/*/ 2>/dev/null \
-  | awk -F/ '{ print $(NF-1) "\t" $0 }' \
-  | grep -E '^[0-9]+\.[0-9]+\.[0-9]+[[:space:]]' \
-  | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n \
-  | tail -1 \
-  | cut -f2-) || true
-
-if [ -z "${PLUGIN_DIR:-}" ]; then
-  echo "NOT_FOUND"
-else
-  echo "FOUND: $PLUGIN_DIR"
-fi
-```
-
-If NOT_FOUND, the plugin is not installed. Tell the user to install it first via `/plugins`, then re-run `/cc-squirrel-auto-switch:setup`.
-
-## Step 3: Generate the launcher
-
-Write the version-aware launcher to `~/.claude/squirrel-auto-switch.sh`:
-
-```bash
-CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-LAUNCHER="$HOME/.claude/squirrel-auto-switch.sh"
-
-cat > "$LAUNCHER" << 'LAUNCHER_EOF'
+cat > "$HOME/.claude/squirrel-auto-switch.sh" << 'EOF'
 #!/usr/bin/env bash
-# cc-squirrel-auto-switch launcher — finds the latest installed version.
 set -euo pipefail
-
 CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
-
 plugin_dir=$(ls -d "$CLAUDE_DIR"/plugins/cache/*/cc-squirrel-auto-switch/*/ 2>/dev/null \
   | awk -F/ '{ print $(NF-1) "\t" $0 }' \
   | grep -E '^[0-9]+\.[0-9]+\.[0-9]+[[:space:]]' \
   | sort -t. -k1,1n -k2,2n -k3,3n -k4,4n \
-  | tail -1 \
-  | cut -f2-) || true
-
-if [ -z "${plugin_dir:-}" ]; then
-  exit 0
-fi
-
+  | tail -1 | cut -f2-) || true
+[ -z "${plugin_dir:-}" ] && exit 0
 exec bash "${plugin_dir}scripts/statusline.sh"
-LAUNCHER_EOF
-
-chmod +x "$LAUNCHER"
-echo "Launcher written: $LAUNCHER"
+EOF
+chmod +x "$HOME/.claude/squirrel-auto-switch.sh"
+echo "OK"
 ```
 
-## Step 4: Read existing statusLine
+## 3. Read existing statusLine, build new command
 
 ```bash
-SETTINGS="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"
+SETTINGS="$HOME/.claude/settings.json"
+EXISTING=$(jq -r '(.statusLine.command // "")' "$SETTINGS" 2>/dev/null || true)
 
-EXISTING=""
-if [ -f "$SETTINGS" ]; then
-  EXISTING=$(jq -r '(.statusLine.command // .statusLine // "")' "$SETTINGS" 2>/dev/null || true)
+# Strip old squirrel-switch entries (dev paths, previous installs)
+EXISTING=$(echo "$EXISTING" \
+  | sed 's/bash .*squirrel-auto-switch.*statusline.sh *| *//' \
+  | sed 's/ *| *bash .*squirrel-auto-switch.*statusline.sh//' \
+  | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+
+LAUNCHER="bash $HOME/.claude/squirrel-auto-switch.sh"
+
+if [ -z "$EXISTING" ]; then
+  NEW_CMD="$LAUNCHER > /dev/null"
+  echo "NEW_CMD=$NEW_CMD"
+else
+  echo "EXISTING=$EXISTING"
+  NEW_CMD="$LAUNCHER | $EXISTING"
+  echo "NEW_CMD=$NEW_CMD"
 fi
-echo "EXISTING: ${EXISTING:-(none)}"
 ```
 
-## Step 5: Ask the user if a non-squirrel statusline is already configured
+## 4. Confirm if replacing an existing statusline
 
-If `EXISTING` is non-empty AND does NOT contain `squirrel-auto-switch`, use AskUserQuestion:
+If EXISTING was non-empty AND did not already contain `squirrel-auto-switch.sh`, use AskUserQuestion:
 
 - header: "Existing statusline"
-- question: "Your settings.json already has a statusLine configured:\n\n  `${EXISTING}`\n\nThe squirrel-switch launcher will be piped before it:\n\n  `bash ~/.claude/squirrel-auto-switch.sh | ${EXISTING}`\n\nContinue?"
-- options:
-  - "Install (pipe before existing statusline)"
-  - "Install (replace completely)"
-  - "Cancel"
+- question: "Found existing statusLine. Pipe squirrel-switch before it?\n\n  `${NEW_CMD}`"
+- options: "Yes (pipe before)", "Replace completely", "Cancel"
 
-**If "Cancel"**: stop. No changes made.
+If canceled: stop. If "replace": set `NEW_CMD="$LAUNCHER > /dev/null"`. Otherwise proceed.
 
-**If "Install (pipe before)"**: set `PIPE_MODE=before`.
-
-**If "Install (replace)"**: set `PIPE_MODE=replace`.
-
-**If EXISTING is empty or already squirrel**: set `PIPE_MODE=before` (no prompt needed).
-
-## Step 6: Create backup
+## 5. Backup and write
 
 ```bash
-SETTINGS="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"
-BACKUP="${SETTINGS}.bak.$(date +%Y%m%d-%H%M%S)"
+SETTINGS="$HOME/.claude/settings.json"
+cp "$SETTINGS" "${SETTINGS}.bak.$(date +%Y%m%d-%H%M%S)"
 
-if [ -f "$SETTINGS" ]; then
-  cp "$SETTINGS" "$BACKUP"
-  echo "Backup: $BACKUP"
-fi
-```
-
-## Step 7: Write the new statusLine
-
-Based on `PIPE_MODE`:
-
-**If `before` and EXISTING is non-empty:**
-```bash
-SWITCH_CMD="bash $HOME/.claude/squirrel-auto-switch.sh"
-NEW_CMD="$SWITCH_CMD | $EXISTING"
-```
-
-**If `before` and EXISTING is empty:**
-```bash
-NEW_CMD="bash $HOME/.claude/squirrel-auto-switch.sh > /dev/null"
-```
-
-**If `replace`:**
-```bash
-NEW_CMD="bash $HOME/.claude/squirrel-auto-switch.sh > /dev/null"
-```
-
-Then write:
-
-```bash
-SETTINGS="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/settings.json"
-
-# Ensure settings.json exists
 mkdir -p "$(dirname "$SETTINGS")"
-if [ ! -f "$SETTINGS" ]; then
-  echo '{}' > "$SETTINGS"
-fi
+[ -f "$SETTINGS" ] || echo '{}' > "$SETTINGS"
 
-# Merge the new statusLine
 jq --arg cmd "$NEW_CMD" '.statusLine = { "type": "command", "command": $cmd }' \
-  "$SETTINGS" > "${SETTINGS}.tmp" \
-  && mv "${SETTINGS}.tmp" "$SETTINGS"
+  "$SETTINGS" > "${SETTINGS}.tmp" && mv "${SETTINGS}.tmp" "$SETTINGS"
 
-echo "statusLine.command = $NEW_CMD"
+echo "DONE"
+jq '.statusLine' "$SETTINGS"
 ```
 
-## Step 8: Verify
-
-Run the launcher to confirm it works:
+## 6. Verify
 
 ```bash
 echo '{"vim":{"mode":"NORMAL"},"model":{"display_name":"test"},"session_id":"x","transcript_path":"/dev/null","cwd":"/tmp"}' \
   | bash "$HOME/.claude/squirrel-auto-switch.sh" 2>&1
-echo "Exit code: $?"
+echo "Exit: $?"
 ```
 
-If exit code is not 0, report the error and keep the backup path for recovery.
+If exit is not 0, show the error and backup path.
 
-## Step 9: Done
+## 7. Done
 
 Tell the user:
 
-> **Restart Claude Code** for the change to take effect.
->
-> After restart, test: press `i` to enter INSERT mode → Squirrel should switch to Chinese. Press `Esc` → should switch back to ABC.
->
-> Backup saved at `{BACKUP}`. To restore: `cp {BACKUP} ~/.claude/settings.json`
->
-> Environment variables (add to shell profile if needed):
-> - `CC_SQUIRREL_DISABLE=1` — temporarily disable
-> - `CC_SQUIRREL_DEFAULT_INSERT_STATE=nascii|ascii` — default insert mode
-> - `CC_SQUIRREL_AUTO_ACTIVATE=0` — skip input source activation
->
-> To uninstall: delete `~/.claude/squirrel-auto-switch.sh` and restore settings from backup.
+> **Restart Claude Code**. After restart: `i` → Chinese, `Esc` → ABC.
+> Backup: `~/.claude/settings.json.bak.*`
+> Uninstall: delete `~/.claude/squirrel-auto-switch.sh` and restore settings from backup.
